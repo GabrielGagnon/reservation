@@ -1,0 +1,12 @@
+{
+  "name": "peps-reservation",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Auto-reserve a slot on the Laval PEPS the moment it opens.",
+  "scripts": {
+    "start": "node reserve.js"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
