@@ -45,6 +45,7 @@
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname, basename } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import readline from 'readline';
@@ -193,32 +194,83 @@ function pressEnter(msg) {
   });
 }
 
+function promptLine(msg) {
+  return new Promise((resolve) => {
+    const rl = getReadline();
+    process.stdout.write(msg);
+    rl.once('line', (line) => resolve(line.trim()));
+  });
+}
+
+async function selectJobs(jobs) {
+  if (jobs.length <= 1) return jobs;
+  while (true) {
+    const answer = await promptLine(
+      `Which jobs to run? (e.g. "1", "2", "1,2", or Enter for all): `,
+    );
+    if (answer === '' || answer.toLowerCase() === 'all') return jobs;
+    const parts = answer.split(',').map((s) => s.trim()).filter(Boolean);
+    const selected = [];
+    let valid = true;
+    for (const p of parts) {
+      const n = parseInt(p, 10);
+      if (!Number.isInteger(n) || String(n) !== p || n < 1 || n > jobs.length) {
+        console.log(`  Invalid: "${p}". Pick numbers from 1 to ${jobs.length}.`);
+        valid = false;
+        break;
+      }
+      const job = jobs[n - 1];
+      if (!selected.includes(job)) selected.push(job);
+    }
+    if (valid && selected.length > 0) return selected;
+    if (valid) console.log('  No jobs selected. Try again.');
+  }
+}
+
 let sleepInhibitor = null;
 function preventSleep() {
+  let child;
   try {
-    const child = spawn(
-      'systemd-inhibit',
-      [
-        '--what=sleep:idle',
-        '--who=peps-reservation',
-        '--why=waiting for reservation booking',
-        '--mode=block',
-        'sleep',
-        'infinity',
-      ],
-      { stdio: 'ignore' },
-    );
-    child.on('error', (e) => {
-      console.log(`(Sleep inhibit unavailable: ${e.message}. Disable sleep manually in Settings if needed.)`);
-    });
-    child.on('spawn', () => {
-      console.log('Sleep/suspend inhibited until the script exits.');
-    });
-    return child;
+    if (process.platform === 'win32') {
+      const psPath = join(tmpdir(), 'peps-sleep-inhibit.ps1');
+      writeFileSync(psPath, [
+        'Add-Type -MemberDefinition \'[DllImport("kernel32.dll")] public static extern int SetThreadExecutionState(int f);\' -Name K32 -Namespace Win32',
+        '[Win32.K32]::SetThreadExecutionState(0x80000041)',
+        'while ($true) { Start-Sleep -Seconds 60 }',
+      ].join('\r\n'));
+      child = spawn(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', psPath],
+        { stdio: 'ignore' },
+      );
+    } else if (process.platform === 'linux') {
+      child = spawn(
+        'systemd-inhibit',
+        [
+          '--what=sleep:idle',
+          '--who=peps-reservation',
+          '--why=waiting for reservation booking',
+          '--mode=block',
+          'sleep',
+          'infinity',
+        ],
+        { stdio: 'ignore' },
+      );
+    } else {
+      console.log('(Sleep inhibit not supported on this platform. Disable sleep manually if needed.)');
+      return null;
+    }
   } catch (e) {
     console.log(`(Could not start sleep inhibitor: ${e.message})`);
     return null;
   }
+  child.on('error', (e) => {
+    console.log(`(Sleep inhibit unavailable: ${e.message}. Disable sleep manually in Settings if needed.)`);
+  });
+  child.on('spawn', () => {
+    console.log('Sleep/suspend inhibited until the script exits.');
+  });
+  return child;
 }
 
 function releaseSleepInhibitor() {
@@ -621,7 +673,14 @@ async function keepAliveAll(jobs, cookieHeaders) {
 
 async function main() {
   console.log(`Config: ${CONFIG_PATH}`);
-  console.log(`Jobs to run: ${CONFIG.jobs.length}`);
+  console.log(`Available jobs:`);
+  CONFIG.jobs.forEach((j, i) => {
+    console.log(`  ${i + 1}. ${j.name} — ${j.activity}${j.date ? ` on ${j.date}` : ''}`);
+  });
+
+  CONFIG.jobs = await selectJobs(CONFIG.jobs);
+
+  console.log(`\nJobs to run: ${CONFIG.jobs.length}`);
   CONFIG.jobs.forEach((j, i) => {
     console.log(`  ${i + 1}. ${j.name} — ${j.activity}${j.date ? ` on ${j.date}` : ''}`);
   });
