@@ -377,6 +377,22 @@ function parseTargetRow(html, target, fetchedAt) {
   return null;
 }
 
+function listAllSlots(html) {
+  const slots = [];
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  for (const row of rows) {
+    const cellMatches = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)];
+    if (cellMatches.length < 6) continue;
+    const cells = cellMatches.map((m) => m[1]);
+    const plateau = stripTags(cells[0]);
+    const start = stripTags(cells[1]);
+    const terrain = stripTags(cells[3]);
+    if (!plateau || !start || !terrain) continue;
+    slots.push({ plateau, start_time: start, terrain });
+  }
+  return slots;
+}
+
 function lavalDateParam(yyyymmdd) {
   const [y, m, d] = yyyymmdd.split('-');
   return `${m}/${d}/${y} 00:00:00`;
@@ -614,10 +630,13 @@ async function bookForJob(job, cookieHeader, jobIndex, totalJobs) {
 
   const infos = [];
   let foundCount = 0;
+  const missingTargets = [];
   for (const target of job.targets) {
     const info = parseTargetRow(probeHtml, target, fetchedAt);
     if (!info || info.error) {
-      console.log(`  - ${targetLabel(target)}: NOT FOUND (will skip)`);
+      const dateStr = job.date || 'this date';
+      console.log(`  - There is no ${targetLabel(target)} slot on ${dateStr}.`);
+      missingTargets.push(target);
       infos.push(null);
     } else {
       const when = info.isOpenNow
@@ -628,6 +647,19 @@ async function bookForJob(job, cookieHeader, jobIndex, totalJobs) {
       foundCount++;
     }
   }
+
+  if (missingTargets.length > 0) {
+    const allSlots = listAllSlots(probeHtml);
+    if (allSlots.length === 0) {
+      console.log(`\n  (No slots are listed on the page for this date.)`);
+    } else {
+      console.log(`\n  Slots actually available on this date:`);
+      for (const s of allSlots) {
+        console.log(`    - ${s.plateau} ${s.start_time} terrain ${s.terrain}`);
+      }
+    }
+  }
+
   if (foundCount === 0) {
     console.log(`\nNo target was found for ${job.name}. Skipping.`);
     return { outcome: 'failed_no_targets' };

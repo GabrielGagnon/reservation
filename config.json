@@ -4,16 +4,16 @@
     {
       "name": "compte-a",
       "activity": "Volleyball",
-      "date": "2026-05-18",
+      "date": "2026-05-29",
       "targets": [
-        { "plateau": "1305C", "start_time": "18:30", "terrain": "1" },
-        { "plateau": "1305C", "start_time": "18:30", "terrain": "2" }
+        { "plateau": "1305C", "start_time": "14:30", "terrain": "1" },
+        { "plateau": "1305C", "start_time": "14:30", "terrain": "2" }
       ]
     },
     {
       "name": "compte-b",
       "activity": "Volleyball",
-      "date": "2026-05-18",
+      "date": "2026-05-28",
       "targets": [
         { "plateau": "1305C", "start_time": "19:30", "terrain": "1" },
         { "plateau": "1305C", "start_time": "19:30", "terrain": "2" }
